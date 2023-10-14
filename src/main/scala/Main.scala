@@ -25,6 +25,7 @@ object MainApp extends ZIOAppDefault:
     for {
       redis <- ZIO.service[Redis]
       lobbyId <- Random.nextInt
+
       succeeded <- redis
         .set("game", lobbyId, Some(1.hour))
         .mapError(_ => "Couldn't update redis.")
