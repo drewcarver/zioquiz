@@ -11,10 +11,12 @@ import zio.http.Channel
 import zio.http.ChannelEvent.UserEvent
 import zio.http.ChannelEvent.UserEventTriggered
 import scala.collection.mutable.HashMap
+import zio.http.Header.Authorization
 
 val JOIN_GAME_EVENT_PREFIX = "join-game:"
 
 object MainApp extends ZIOAppDefault:
+  case class GameClient(id: String)
   val connections = new HashMap[String, WebSocketChannel]()
 
   object ProtobufCodecSupplier extends CodecSupplier {
@@ -34,14 +36,20 @@ object MainApp extends ZIOAppDefault:
       game = GameCreated(8L, time)
     } yield (game)
 
-  val socketApp: SocketApp[Any] =
+  def getUserSub(jwt: String): String =
+    jwt
+
+  def socketApp(req: Request): SocketApp[Any] =
     Handler.webSocket { channel =>
       channel.receiveAll {
         case UserEventTriggered(UserEvent.HandshakeComplete) =>
           for
             userId <- Random.nextIntBetween(0, Int.MaxValue)
+            token <- ZIO
+              .fromOption(req.url.queryParams.get("authToken"))
+              .mapError(e => new Throwable("Couldn't get auth header."))
             _ <- ZIO.succeed(connections += (userId.toString() -> channel))
-            _ <- channel.send(Read(WebSocketFrame.text(s"${userId}")))
+            _ <- channel.send(Read(WebSocketFrame.text(s"${token.mkString}")))
           yield ()
         case Read(WebSocketFrame.Text(event))
             if event.startsWith(JOIN_GAME_EVENT_PREFIX) =>
@@ -64,7 +72,8 @@ object MainApp extends ZIOAppDefault:
 
   val app: Http[Redis, Nothing, Request, Response] =
     Http.collectZIO[Request] {
-      case Method.GET -> Root / "subscriptions" => socketApp.toResponse
+      case req @ Method.GET -> Root / "subscriptions" =>
+        socketApp(req).toResponse
       case Method.POST -> Root / "game" =>
         createGame.fold(
           Response.text(_),

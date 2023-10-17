@@ -8,4 +8,5 @@ object ZioQuiz extends RootModule with ScalaModule {
     ivy"dev.zio::zio-redis:0.2.0",
     ivy"dev.optics::monocle-core:3.2.0"
   )
+
 }

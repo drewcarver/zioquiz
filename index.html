@@ -1,0 +1,15 @@
+<html>
+  <head>
+    <script>
+      webSocket = new WebSocket(
+        `ws://localhost:8090/subscriptions?authToken=${"mytokenhere"}`
+      )
+
+      webSocket.onopen = (event) => console.log(event)
+      webSocket.onmessage = (event) => console.log(event)
+    </script>
+  </head>
+  <body>
+    <button>Click me</button>
+  </body>
+</html>
