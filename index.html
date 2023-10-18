@@ -7,9 +7,17 @@
 
       webSocket.onopen = (event) => console.log(event)
       webSocket.onmessage = (event) => console.log(event)
+
+      const start = () => {
+        console.log('test')
+        webSocket.send("start")
+      }
     </script>
   </head>
   <body>
-    <button>Click me</button>
+    <button id="startButton" onclick="start">Start</button>
+    <script>
+      document.getElementById("startButton").addEventListener("click", start)
+    </script>
   </body>
 </html>

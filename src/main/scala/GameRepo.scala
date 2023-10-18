@@ -11,9 +11,9 @@ object QuizGame:
     DeriveJsonEncoder.gen[QuizGame]
 
 trait GameRepo:
-  def get(gameId: String): Task[Either[String, QuizGame]]
+  def get(gameId: String): Task[QuizGame]
   def create(): Task[QuizGame]
-  def join(gameId: String): ZIO[Any, String, QuizGame]
+  def join(gameId: String): Task[QuizGame]
 
 case class GameRepoImpl(
     redis: Redis
@@ -28,20 +28,23 @@ case class GameRepoImpl(
         .set("game", game.toJson, Some(1.hour))
     } yield (game)
 
-  override def get(gameId: String): Task[Either[String, QuizGame]] =
-    for gameJson <- redis.get(gameId).returning[String]
-    yield gameJson
-      .toRight("Game not found")
-      .flatMap(_.fromJson[QuizGame])
+  override def get(gameId: String): Task[QuizGame] =
+    for 
+      gameJson <- redis.get(gameId)
+        .returning[String]
+        .flatMap(ZIO.fromOption)
+        .mapError(e => new Throwable("Couldn't find game."))
+      game <- ZIO.fromEither(gameJson.fromJson[QuizGame])
+        .mapError(e => new Throwable("Couldn't parse game JSON."))
+    yield game
 
-  override def join(gameId: String): ZIO[Any, String, QuizGame] =
+  override def join(gameId: String): Task[QuizGame] =
     for {
       playerId <- Random.nextInt
-      game <- get(gameId).mapError(_ => "Couldn't find game.")
-      gameWithJoinedPlayer <- ZIO.fromEither(
-        game
-          .map(g => g.focus(_.players).modify(_.::(playerId.toString())))
-      )
+      game <- get(gameId)
+      gameWithJoinedPlayer = game
+        .focus(_.players)
+        .modify(_.::(playerId.toString()))
 
       success <- redis
         .set(
@@ -49,5 +52,21 @@ case class GameRepoImpl(
           gameWithJoinedPlayer.toJson,
           Some(4.hour)
         )
-        .mapError(_ => "Couldn't join game.")
+        .mapError(_ => new Throwable("Couldn't join game."))
     } yield gameWithJoinedPlayer
+
+object GameRepoImpl:
+    val layer: ZLayer[Redis, Nothing, GameRepo] = 
+      ZLayer {
+        for 
+          redis <- ZIO.service[Redis]
+        yield GameRepoImpl(redis)
+      }
+
+object GameRepo:
+  def join(id: String): ZIO[GameRepo, Throwable, QuizGame] =
+    ZIO.serviceWithZIO[GameRepo](_.join(id))
+  def create(): ZIO[GameRepo, Throwable, QuizGame] =
+    ZIO.serviceWithZIO[GameRepo](_.create())
+  def get(id: String): ZIO[GameRepo, Throwable, QuizGame] =
+    ZIO.serviceWithZIO[GameRepo](_.get(id))

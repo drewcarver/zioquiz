@@ -16,7 +16,6 @@ import zio.http.Header.Authorization
 val JOIN_GAME_EVENT_PREFIX = "join-game:"
 
 object MainApp extends ZIOAppDefault:
-  case class GameClient(id: String)
   val connections = new HashMap[String, WebSocketChannel]()
 
   object ProtobufCodecSupplier extends CodecSupplier {
@@ -39,7 +38,7 @@ object MainApp extends ZIOAppDefault:
   def getUserSub(jwt: String): String =
     jwt
 
-  def socketApp(req: Request): SocketApp[Any] =
+  def socketApp(req: Request): SocketApp[GameRepo] =
     Handler.webSocket { channel =>
       channel.receiveAll {
         case UserEventTriggered(UserEvent.HandshakeComplete) =>
@@ -49,42 +48,38 @@ object MainApp extends ZIOAppDefault:
               .fromOption(req.url.queryParams.get("authToken"))
               .mapError(e => new Throwable("Couldn't get auth header."))
             _ <- ZIO.succeed(connections += (userId.toString() -> channel))
-            _ <- channel.send(Read(WebSocketFrame.text(s"${token.mkString}")))
+            _ <- channel.send(Read(WebSocketFrame.text(token.mkString)))
           yield ()
-        case Read(WebSocketFrame.Text(event))
-            if event.startsWith(JOIN_GAME_EVENT_PREFIX) =>
+        case Read(WebSocketFrame.Text(event)) if event.startsWith(JOIN_GAME_EVENT_PREFIX) =>
           val gameId = event.split(":").last
-          channel.send(Read(WebSocketFrame.text(gameId)))
-        case Read(WebSocketFrame.Text(event))
-            if event.startsWith(JOIN_GAME_EVENT_PREFIX) =>
-          val gameId = event.split(":").last
-          channel.send(Read(WebSocketFrame.text(gameId)))
-        case Read(WebSocketFrame.Text("test")) =>
-          ZIO.collectAll(
-            connections.values.map(c =>
-              c.send(Read(WebSocketFrame.text("hi!")))
-            )
-          )
+          for 
+            gameRepo <- ZIO.service[GameRepo]
+            _ <- gameRepo.join(gameId).mapError(e => new Throwable(e))
+            _ <- channel.send(Read(WebSocketFrame.text(gameId)))
+          yield ()
+        case Read(WebSocketFrame.Text("start")) =>
+          ZIO.unit
         case _ =>
           ZIO.unit
       }
     }
 
-  val app: Http[Redis, Nothing, Request, Response] =
+  val app: Http[GameRepo, Nothing, Request, Response] =
     Http.collectZIO[Request] {
       case req @ Method.GET -> Root / "subscriptions" =>
         socketApp(req).toResponse
-      case Method.POST -> Root / "game" =>
-        createGame.fold(
-          Response.text(_),
-          game => Response.json(game.toJson)
-        )
     }
 
+  val gameApp: ZStream[Any, Throwable, Nothing] = 
+    ZStream.fromZIO(
+      ZIO.collectAll(connections.values.map(c => c.send(Read(WebSocketFrame.text("test")))))
+    ).repeat(Schedule.fixed(5.seconds)).forever.drain
+
   override def run =
-    Server
-      .serve(app)
+    ZStream.fromZIO(Server
+      .serve(app)).merge(gameApp).runDrain
       .provide(
+        GameRepoImpl.layer,
         Redis.layer,
         RedisExecutor.layer,
         ZLayer.succeed(RedisConfig.Default),
