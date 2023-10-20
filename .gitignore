@@ -32,6 +32,7 @@ logs/
 .target/
 project/project
 project/target
+project/
 
 # Ignore dependency directories
 lib_managed/
