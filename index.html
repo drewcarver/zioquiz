@@ -6,15 +6,25 @@
       )
 
       webSocket.onopen = (event) => console.log(event)
-      webSocket.onmessage = (event) => console.log(event)
+      webSocket.onmessage = (event) => {
+        try {
+          const eventPayload = JSON.parse(event.data)
+          console.log(eventPayload)
+          document.getElementById("question-title").innerHTML =
+            eventPayload.text
+        } catch {
+          console.log(event)
+        }
+      }
 
       const start = () => {
-        console.log('test')
-        webSocket.send("start")
+        console.log("test")
+        fetch("http://localhost:8090/test")
       }
     </script>
   </head>
   <body>
+    <h1 id="question-title"></h1>
     <button id="startButton" onclick="start">Start</button>
     <script>
       document.getElementById("startButton").addEventListener("click", start)

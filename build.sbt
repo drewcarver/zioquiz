@@ -1,6 +1,6 @@
 import sbt._
 
-lazy val root = project
+val root = project
     .in(file("."))
     .settings(
         name := "zioquiz",

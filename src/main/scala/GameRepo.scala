@@ -3,6 +3,7 @@ import zio.redis._
 import zio.json._
 import monocle.syntax.all._
 
+case class Player(name: String, score: Int)
 case class QuizGame(gameId: Int, players: List[String])
 object QuizGame:
   implicit val decoder: JsonDecoder[QuizGame] =
