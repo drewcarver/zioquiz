@@ -7,12 +7,15 @@
 
       webSocket.onopen = (event) => console.log(event)
       webSocket.onmessage = (event) => {
+        let eventData = null
         try {
-          const eventPayload = JSON.parse(event.data)
-          console.log(eventPayload)
+          eventData = JSON.parse(event.data)
+        } catch {}
+
+        if (eventData?.QuestionAsked) {
           document.getElementById("question-title").innerHTML =
-            eventPayload.text
-        } catch {
+            eventData.QuestionAsked.question
+        } else {
           console.log(event)
         }
       }

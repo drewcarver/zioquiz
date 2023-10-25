@@ -16,20 +16,22 @@ import zio.kafka.consumer._
 import zio.kafka.producer._
 import zio.kafka.serde._
 
-val JOIN_GAME_EVENT_PREFIX = "join-game:"
-
 object MainApp extends ZIOAppDefault:
-
-  object ProtobufCodecSupplier extends CodecSupplier {
-    def get[A: Schema]: BinaryCodec[A] = ProtobufCodec.protobufCodec
-  }
-
   override def run =
-    ZStream.fromZIO(Server.serve(QuizClient.app))
-      .runDrain
-      .provide(
-        QuizKafkaProducer.layer,
-        GameRepoImpl.layer,
-        ZLayer.succeed[CodecSupplier](ProtobufCodecSupplier),
-        Server.defaultWithPort(8090)
-      )
+    for
+      webSocketClient <- Server
+        .serve(QuizClient.app)
+        .provide(
+          QuizKafkaProducer.layer,
+          Server.defaultWithPort(8090)
+        )
+        .fork
+      quizRunner <- QuizRunner.producer.provide(QuizKafkaProducer.layer).fork
+
+      _ <- ZStream
+        .fromZIO((webSocketClient <*> quizRunner).join)
+        .merge(
+          QuizClient.sendQuestionToClient.provideLayer(QuizKafkaConsumer.layer)
+        )
+        .runDrain
+    yield ()
