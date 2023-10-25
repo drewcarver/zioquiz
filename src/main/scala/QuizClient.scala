@@ -63,6 +63,10 @@ object QuizClient:
   private def socketApp(request: Request): SocketApp[Producer] =
     Handler.webSocket { channel =>
       channel.receiveAll {
+        case Read(WebSocketFrame.Close(status, reason)) =>
+          Console.printLine(
+            "Closing channel with status: " + status + " and reason: " + reason
+          )
         case UserEventTriggered(UserEvent.HandshakeComplete) =>
           for
             userId <- Random.nextIntBetween(0, Int.MaxValue)
