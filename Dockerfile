@@ -8,4 +8,4 @@ RUN sbt compile
 
 EXPOSE 8090
 
-CMD ["sbt", "run"]
+CMD ["sbt", "runAllProjects"]

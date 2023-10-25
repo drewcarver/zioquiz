@@ -20,3 +20,4 @@ object QuizRunner:
         )
       )
       .schedule(Schedule.fixed(5.seconds))
+      .tap(_ => Console.printLine("Message sent"))

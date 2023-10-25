@@ -10,6 +10,7 @@ import scala.collection.mutable.HashMap
 import zio.kafka.producer.Producer
 import zio.kafka.serde.Serde
 import zio.kafka.consumer._
+import common._
 
 object QuizClient:
   val connections = new HashMap[String, WebSocketChannel]()
