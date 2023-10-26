@@ -19,28 +19,12 @@ object QuizClient:
 
   private def sendToAllClients(webSocketFrame: WebSocketFrame) =
     ZIO.collectAll(
-      connections.values
-        .map(c => c.send(Read(webSocketFrame)))
+      connections.map({ case (key, channel) =>
+        channel
+          .send(Read(webSocketFrame))
+          .catchAll(_ => ZIO.succeed(connections.remove(key)))
+      })
     )
-
-  private def handleEvent(
-      username: String,
-      message: String
-  ): ZIO[Producer, Throwable, Any] =
-    for
-      event <- ZIO
-        .fromEither(message.fromJson[QuizEvent])
-        .mapError(e => new Throwable(e))
-      _ <- event match
-        case QuestionAnswered(questionId, answer) =>
-          Producer.produce(
-            "question-answered",
-            questionId,
-            event.toJson,
-            Serde.string,
-            Serde.string
-          )
-    yield ()
 
   val sendQuestionToClient =
     Consumer
@@ -83,6 +67,25 @@ object QuizClient:
           ZIO.unit
       }
     }
+
+  private def handleEvent(
+      username: String,
+      message: String
+  ): ZIO[Producer, Throwable, Any] =
+    for
+      event <- ZIO
+        .fromEither(message.fromJson[QuizEvent])
+        .mapError(e => new Throwable(e))
+      _ <- event match
+        case QuestionAnswered(questionId, answer) =>
+          Producer.produce(
+            "question-answered",
+            questionId,
+            event.toJson,
+            Serde.string,
+            Serde.string
+          )
+    yield ()
 
   val app: Http[Producer, Nothing, Request, Response] =
     Http.collectZIO[Request] {

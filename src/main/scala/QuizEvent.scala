@@ -1,8 +1,11 @@
 import zio.json._
 
 sealed trait QuizEvent extends Serializable
-case class QuestionAnswered(questionid: String, answer: String)
-    extends QuizEvent
+case class QuestionAnswered(
+    questionid: String,
+    playerId: String,
+    answer: String
+) extends QuizEvent
 case class QuestionAsked(questionid: String, question: String) extends QuizEvent
 
 object QuizEvent:
