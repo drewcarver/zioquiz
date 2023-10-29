@@ -1,0 +1,6 @@
+podman-compose version: 1.0.6
+['podman', '--version', '']
+using podman version: 4.7.1
+** excluding:  set()
+['podman', 'inspect', '-t', 'image', '-f', '{{.Id}}', 'quiz:latest']
+['podman', 'ps', '--filter', 'label=io.podman.compose.project=zioquiz', '-a', '--format', '{{ index .Labels "io.podman.compose.config-hash"}}']

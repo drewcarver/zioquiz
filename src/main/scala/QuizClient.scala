@@ -13,7 +13,7 @@ import zio.kafka.consumer._
 
 object QuizClient:
   val connections = new HashMap[String, WebSocketChannel]()
-
+  
   private def getUserSub(jwt: String): String =
     jwt
 
@@ -26,6 +26,23 @@ object QuizClient:
       })
     )
 
+  val sendScoreToClient =
+    Consumer
+      .plainStream(
+        Subscription.topics(SCORE_UPDATED_TOPIC),
+        Serde.string,
+        Serde.string
+      )
+      .tap(message => 
+          for
+            _ <- sendToAllClients(WebSocketFrame.text(message.value))
+          yield ()
+      )
+      .map(_.offset)
+      .aggregateAsync(Consumer.offsetBatches)
+      .mapZIO(_.commit)
+      .drain
+
   val sendQuestionToClient =
     Consumer
       .plainStream(
@@ -33,7 +50,12 @@ object QuizClient:
         Serde.string,
         Serde.string
       )
-      .tap(message => sendToAllClients(WebSocketFrame.text(message.value)))
+      .tap(message => 
+          for
+            _ <- Console.printLine("question was asked")
+            _ <- sendToAllClients(WebSocketFrame.text(message.value))
+          yield ()
+      )
       .map(_.offset)
       .aggregateAsync(Consumer.offsetBatches)
       .mapZIO(_.commit)
@@ -47,24 +69,20 @@ object QuizClient:
   private def socketApp(request: Request): SocketApp[Producer] =
     Handler.webSocket { channel =>
       channel.receiveAll {
-        case Read(WebSocketFrame.Close(status, reason)) =>
-          Console.printLine(
-            "Closing channel with status: " + status + " and reason: " + reason
-          )
         case UserEventTriggered(UserEvent.HandshakeComplete) =>
           for
             userId <- Random.nextIntBetween(0, Int.MaxValue)
             token <- getUserToken(request)
             _ <- ZIO.succeed(connections += (userId.toString() -> channel))
-            _ <- channel.send(Read(WebSocketFrame.text(token.mkString)))
+            _ <- channel.send(Read(WebSocketFrame.text("hi")))
           yield ()
-        case UserEventTriggered(WebSocketFrame.Text(event)) =>
+        case Read(WebSocketFrame.Text(event)) =>
           for
             token <- getUserToken(request)
             _ <- handleEvent(token.mkString, event)
           yield ()
-        case _ =>
-          ZIO.unit
+        case e =>
+          Console.printLine(e.toString)
       }
     }
 
@@ -75,16 +93,20 @@ object QuizClient:
     for
       event <- ZIO
         .fromEither(message.fromJson[QuizEvent])
-        .mapError(e => new Throwable(e))
+        .mapError(e => Console.printLine(e))
+        .mapError(_ => new Throwable("Couldn't parse"))
       _ <- event match
-        case QuestionAnswered(questionId, answer) =>
-          Producer.produce(
-            "question-answered",
-            questionId,
-            event.toJson,
-            Serde.string,
-            Serde.string
-          )
+        case QuestionAnswered(questionId, playerId, answer) =>
+          for
+            _ <- Producer.produce(
+                QUESTION_ANSWERED_TOPIC,
+                questionId,
+                event.toJson,
+                Serde.string,
+                Serde.string
+              )
+          yield ()
+        case _ => Console.printLine("Don't know what to do with this")
     yield ()
 
   val app: Http[Producer, Nothing, Request, Response] =

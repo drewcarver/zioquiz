@@ -20,17 +20,19 @@
         }
       }
 
-      const start = () => {
+      const submitAnswer = () => {
         console.log("test")
-        fetch("http://localhost:8090/test")
+        const answer = document.getElementById("answer-input").value
+        webSocket.send(JSON.stringify({ QuestionAnswered: { playerId: 'drew', questionId: "1", answer }}))
       }
     </script>
   </head>
   <body>
     <h1 id="question-title"></h1>
-    <button id="startButton" onclick="start">Start</button>
+    <input type="text" id="answer-input" />
+    <button id="submit-button">Start</button>
     <script>
-      document.getElementById("startButton").addEventListener("click", start)
+      document.getElementById("submit-button").addEventListener("click", submitAnswer)
     </script>
   </body>
 </html>

@@ -32,10 +32,20 @@ object MainApp extends ZIOAppDefault:
         .fromZIO((webSocketClient <*> quizRunner).join)
         .merge(
           QuizClient.sendQuestionToClient
-            .provideLayer(QuizKafkaConsumer.layer)
             .onError(_ =>
-              Console.printLine("Consumer died").catchAll(_ => ZIO.unit)
+              Console.printLine("Question consumer died").catchAll(_ => ZIO.unit)
             )
         )
+        .merge(
+          QuizClient.sendScoreToClient
+            .onError(_ =>
+              Console.printLine("Score consumer died").catchAll(_ => ZIO.unit)
+            )
+
+        )
+        .merge(
+          ScoreKeeper.run
+        )
         .runDrain
+        .provide(QuizKafkaProducer.layer, QuizKafkaConsumer.layer)
     yield ()
