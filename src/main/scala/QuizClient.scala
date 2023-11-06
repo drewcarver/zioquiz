@@ -34,7 +34,12 @@ object QuizClient:
         Serde.string,
         Serde.string
       )
-      .tap(message => sendToAllClients(WebSocketFrame.text(message.value)))
+      .tap(message => 
+        for 
+          questionAsked <- ZIO.fromEither(message.value.fromJson[QuizKafkaEvent.QuizKafkaEvent])
+          _ <- questionAsked match 
+            case QuizKafkaEvent.QuestionAsked(gameId, question) => sendToAllClients(gameId, WebSocketFrame.text(question))
+        yield ())
       .map(_.offset)
       .aggregateAsync(Consumer.offsetBatches)
       .mapZIO(_.commit)
@@ -43,18 +48,20 @@ object QuizClient:
   private def getUsername(request: Request) =
     ZIO
       .fromOption(request.url.queryParams.get("username"))
+      .map(_.mkString)
       .mapError(e => new Throwable("Couldn't get auth header."))
 
   def createGame(request: Request, channel: WebSocketChannel) =
     ZIO
       .fromOption(request.url.queryParams.get("connectionType"))
-      .map(_.mkString match 
+      .mapError(_ => new Throwable("Couldn't find connection type."))
+      .flatMap(_.mkString match 
           case "create" =>
             for 
               username <- getUsername(request)
               gameId <- Random.nextIntBetween(0, Int.MaxValue) 
               gameHashmap = new HashMap[String, WebSocketChannel]()
-              _ <- ZIO.succeed(gameHashmap += (username.mkString -> channel))
+              _ <- ZIO.succeed(gameHashmap += (username -> channel))
               _ <- ZIO.succeed(gameWithConnections += (gameId -> gameHashmap))
               _ <- Producer.produce(
                   CREATE_GAME_TOPIC,
@@ -64,28 +71,29 @@ object QuizClient:
                   Serde.string
                 )
             yield ()
+          case "join" =>
+            for 
+              username <- getUsername(request)
+              gameId <- ZIO.fromOption(request.url.queryParams.get("gameId"))
+                .map(_.mkString.toInt)
+                .mapError(_ => new Throwable("Coudln't find game id to join."))
+              _ <- ZIO.succeed(gameWithConnections(gameId) += (username -> channel))
+              _ <- Console.printLine(s"User ${username} joined the game.")
+            yield ()
         )
             
 
   private def socketApp(request: Request): SocketApp[Producer] =
     Handler.webSocket { channel =>
       channel.receiveAll {
-        case Read(WebSocketFrame.Close(status, reason)) =>
-          Console.printLine(
-            "Closing channel with status: " + status + " and reason: " + reason
-          )
-        case UserEventTriggered(UserEvent.HandshakeComplete) =>
+        case Read(WebSocketFrame.Close(status, reason)) => 
           for
-            userId <- Random.nextIntBetween(0, Int.MaxValue)
-
-            _ <- channel.send(Read(WebSocketFrame.text(gameId)))
+            username <- getUsername(request)
+            _ <- Console.printLine(s"User ${username} left the game.")
           yield ()
-        case UserEventTriggered(WebSocketFrame.Text(event)) =>
-          for
-            _ <- handleEvent(token.mkString, event)
-          yield ()
-        case _ =>
-          ZIO.unit
+        case UserEventTriggered(UserEvent.HandshakeComplete) => createGame(request, channel)
+        case UserEventTriggered(WebSocketFrame.Text(event)) => getUsername(request).flatMap(handleEvent(_, event))
+        case _ => ZIO.unit
       }
     }
 

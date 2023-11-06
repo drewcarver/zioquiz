@@ -1,3 +1,36 @@
 <html>
-  <div>create game</div>
+  <head>
+    <script>
+      webSocket = new WebSocket(
+        `ws://localhost:8090/subscriptions?authToken=${"mytokenhere"}`
+      )
+
+      webSocket.onopen = (event) => console.log(event)
+      webSocket.onmessage = (event) => {
+        let eventData = null
+        try {
+          eventData = JSON.parse(event.data)
+        } catch {}
+
+        if (eventData?.QuestionAsked) {
+          document.getElementById("question-title").innerHTML =
+            eventData.QuestionAsked.question
+        } else {
+          console.log(event)
+        }
+      }
+
+      const submit = () => {
+        const answer = document.getElementById("answer").value
+        webSocket.send({
+          QuestionAnswered: {
+            questionId: 1,
+            username: "drew",
+            answer: "yellow",
+          },
+        })
+      }
+    </script>
+  </head>
+  <body></body>
 </html>
